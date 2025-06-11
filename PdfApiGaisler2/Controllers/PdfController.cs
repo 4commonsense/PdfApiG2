@@ -196,10 +196,14 @@ namespace PdfApiGaisler.Controllers
         private bool IsImage(byte[] fileBytes)
         {
             if (fileBytes.Length < 4) return false;
-            if (fileBytes.Take(2).SequenceEqual(new byte[] { 0xFF, 0xD8 })) return true; // JPEG
-            if (fileBytes.Take(8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })) return true; // PNG
+            if (fileBytes.Take(2).SequenceEqual(new byte[] { 0xFF, 0xD8 })) return true;
+            if (fileBytes.Take(8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })) return true;
+            if (fileBytes.Take(6).SequenceEqual(System.Text.Encoding.ASCII.GetBytes("GIF87a"))) return true;
+            if (fileBytes.Take(6).SequenceEqual(System.Text.Encoding.ASCII.GetBytes("GIF89a"))) return true;
+
             return false;
         }
+
 
         private bool IsTextFile(byte[] fileBytes)
         {
