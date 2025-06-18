@@ -35,95 +35,98 @@ namespace PdfApiGaisler.Controllers
         }
 
         [HttpPost("MakePDF")]
-        public ActionResult<FileResultModel> MakePDF([FromBody] FileRequest fileRequest)
+        public ActionResult<List<FileResultModel>> MakePDF([FromBody] List<FileRequest> fileRequests)
         {
-            if (string.IsNullOrEmpty(fileRequest.Base64Content))
-                return BadRequest("Пустое содержимое файла");
+            if (fileRequests == null || !fileRequests.Any())
+                return BadRequest("Список файлов пуст или не передан.");
 
-            // Проверка и установка имени файла по умолчанию
-            if (string.IsNullOrEmpty(fileRequest.FileName))
+            using (var outputStream = new MemoryStream())
             {
-                fileRequest.FileName = "output.pdf";
-            }
-
-            try
-            {
-                using (var outputStream = new MemoryStream())
+                try
                 {
                     using (var pdfWriter = new PdfWriter(outputStream))
                     {
                         using (var pdfDoc = new PdfDocument(pdfWriter))
                         {
-                            var document = new iText.Layout.Document(pdfDoc);
-                            var fileBytes = Convert.FromBase64String(fileRequest.Base64Content);
-                            var extension = GetFileExtension(fileBytes);
-
-                            if (IsImage(fileBytes))
+                            foreach (var fileRequest in fileRequests)
                             {
-                                using (var ms = new MemoryStream(fileBytes))
+                                if (string.IsNullOrEmpty(fileRequest.Base64Content))
+                                    continue; // пропускаем пустые файлы
+
+                                var fileBytes = Convert.FromBase64String(fileRequest.Base64Content);
+                                var extension = GetFileExtension(fileBytes);
+
+                                if (IsImage(fileBytes))
                                 {
-                                    var imageData = ImageDataFactory.Create(ms.ToArray());
-                                    var image = new iText.Layout.Element.Image(imageData);
-                                    var pageSize = PageSize.A4;
+                                    using (var ms = new MemoryStream(fileBytes))
+                                    {
+                                        var imageData = ImageDataFactory.Create(ms.ToArray());
+                                        var image = new iText.Layout.Element.Image(imageData);
+                                        var pageSize = PageSize.A4;
 
-                                    // Масштабирование изображения
-                                    image.ScaleToFit(pageSize.GetWidth() * 0.9f, pageSize.GetHeight() * 0.9f);
+                                        // Масштабирование изображения
+                                        image.ScaleToFit(pageSize.GetWidth() * 0.9f, pageSize.GetHeight() * 0.9f);
 
-                                    // Создание страницы с размером изображения
-                                    pdfDoc.AddNewPage(pageSize);
+                                        // Создаем новую страницу для каждого изображения
+                                        pdfDoc.AddNewPage(pageSize);
+                                        var page = pdfDoc.GetLastPage();
+                                        var canvas = new iText.Kernel.Pdf.Canvas.PdfCanvas(page);
+                                        image.SetFixedPosition(0, 0);
+                                        new Canvas(canvas, page.GetPageSize()).Add(image);
+                                    }
+                                }
+                                else if (IsTextFile(fileBytes))
+                                {
+                                    var textContent = Encoding.UTF8.GetString(fileBytes);
+                                    pdfDoc.AddNewPage(PageSize.A4);
                                     var page = pdfDoc.GetLastPage();
                                     var canvas = new iText.Kernel.Pdf.Canvas.PdfCanvas(page);
-                                    image.SetFixedPosition(0, 0);
-                                    new Canvas(canvas, page.GetPageSize()).Add(image);
+                                    new Canvas(canvas, PageSize.A4).Add(new Paragraph(textContent));
+                                }
+                                else
+                                {
+                                    // Неизвестный тип файла
+                                    pdfDoc.AddNewPage(PageSize.A4);
+                                    var page = pdfDoc.GetLastPage();
+                                    var canvas = new iText.Kernel.Pdf.Canvas.PdfCanvas(page);
+                                    new Canvas(canvas, PageSize.A4).Add(new Paragraph($"Файл типа {extension} не поддерживается для отображения."));
                                 }
                             }
-                            else if (IsTextFile(fileBytes))
-                            {
-                                var textContent = System.Text.Encoding.UTF8.GetString(fileBytes);
-                                var pageSize = PageSize.A4;
-                                pdfDoc.AddNewPage(pageSize);
-                                var page = pdfDoc.GetLastPage();
-                                var canvas = new iText.Kernel.Pdf.Canvas.PdfCanvas(page);
-                                new Canvas(canvas, pageSize).Add(new Paragraph(textContent));
-                            }
-                            else
-                            {
-                                // Неизвестный тип файла
-                                pdfDoc.AddNewPage(PageSize.A4);
-                                var page = pdfDoc.GetLastPage();
-                                var canvas = new iText.Kernel.Pdf.Canvas.PdfCanvas(page);
-                                new Canvas(canvas, PageSize.A4).Add(new Paragraph($"Файл типа {extension} не поддерживается для отображения."));
-                            }
-
-                            // Закрытие документа
-                            pdfDoc.Close();
-
-                            // Возврат результата
-                            return new FileResultModel
-                            {
-                                FileName = fileRequest.FileName,
-                                Base64Content = Convert.ToBase64String(outputStream.ToArray())
-                            };
                         }
                     }
+
+                    var resultBytes = outputStream.ToArray();
+                    var base64Result = Convert.ToBase64String(resultBytes);
+
+                    // Возвращаем один объединённый PDF
+                    return new List<FileResultModel> {
+                new FileResultModel
+                {
+                    FileName = "merged.pdf",
+                    Base64Content = base64Result
                 }
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Внутренняя ошибка сервера", detail = ex.Message });
+            };
+                }
+                catch (Exception ex)
+                {
+                    return StatusCode(500, new { message = "Внутренняя ошибка сервера", detail = ex.Message });
+                }
             }
         }
 
 
 
+
+
         [HttpPost("DisassemblePDF")]
-        public ActionResult<FileResultModel> DisassemblePDF([FromBody] PdfApiGaisler.Models.FileResult request)
+        public ActionResult<List<FileResultModel>> DisassemblePDF([FromBody] PdfApiGaisler.Models.FileResult request)
         {
+            var results = new List<FileResultModel>();
+
             try
             {
                 var pdfBytes = Convert.FromBase64String(request.Base64Content);
-                var originalFileName = request.FileName; // предполагается, что в request есть имя файла
-                var fileExtension = System.IO.Path.GetExtension(originalFileName).ToLower();
+                var originalFileName = request.FileName ?? "file.pdf";
 
                 using (var inputStream = new MemoryStream(pdfBytes))
                 {
@@ -138,41 +141,49 @@ namespace PdfApiGaisler.Controllers
                         var text = PdfTextExtractor.GetTextFromPage(page);
                         if (!string.IsNullOrWhiteSpace(text))
                         {
-                            // Возвращаем текст как есть, в кодировке UTF-8
                             var textBytes = Encoding.UTF8.GetBytes(text);
-                            return new FileResultModel
+                            results.Add(new FileResultModel
                             {
-                                FileName = System.IO.Path.GetFileNameWithoutExtension(originalFileName) + ".txt",
+                                FileName = $"{System.IO.Path.GetFileNameWithoutExtension(originalFileName)}_page_{i}.txt",
                                 Base64Content = Convert.ToBase64String(textBytes)
-                            };
+                            });
                         }
-
-                        // Попытка извлечь изображение
-                        var imageBytes = _imageExtractor.ExtractImagesFromPage(page);
-                        if (imageBytes != null && imageBytes.Length > 0)
+                        else
                         {
-                            // Определяем расширение для изображения
-                            string imageExt = ".png"; // по умолчанию
-                            if (SupportedImageExtensions.Contains(fileExtension))
-                                imageExt = fileExtension;
-
-                            // Возвращаем изображение с исходным расширением
-                            return new FileResultModel
+                            // Попытка извлечь изображение
+                            var imageBytes = _imageExtractor.ExtractImagesFromPage(page);
+                            if (imageBytes != null && imageBytes.Length > 0)
                             {
-                                FileName = System.IO.Path.GetFileNameWithoutExtension(originalFileName) + imageExt,
-                                Base64Content = Convert.ToBase64String(imageBytes)
-                            };
+                                // Определяем расширение для изображения
+                                string imageExt = ".png"; // по умолчанию
+                                var originalExt = System.IO.Path.GetExtension(originalFileName).ToLower();
+                                if (SupportedImageExtensions.Contains(originalExt))
+                                    imageExt = originalExt;
+
+                                results.Add(new FileResultModel
+                                {
+                                    FileName = $"{System.IO.Path.GetFileNameWithoutExtension(originalFileName)}_page_{i}{imageExt}",
+                                    Base64Content = Convert.ToBase64String(imageBytes)
+                                });
+                            }
                         }
                     }
                 }
 
-                return BadRequest("На страницах PDF не обнаружено текста или изображений");
+                if (results.Count == 0)
+                {
+                    return BadRequest("На страницах PDF не обнаружено текста или изображений");
+                }
+
+                return results;
             }
             catch (Exception ex)
             {
                 return StatusCode(500, new { message = "Ошибка при разборе PDF", detail = ex.Message });
             }
         }
+
+
 
         // Поддерживаемые расширения изображений
         private static readonly HashSet<string> SupportedImageExtensions = new HashSet<string> { ".png", ".jpg", ".jpeg", ".gif" };

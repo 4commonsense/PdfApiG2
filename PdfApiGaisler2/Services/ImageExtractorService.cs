@@ -2,43 +2,54 @@
 using iText.Kernel.Pdf.Canvas.Parser;
 using iText.Kernel.Pdf.Canvas.Parser.Data;
 using iText.Kernel.Pdf.Canvas.Parser.Listener;
-using Microsoft.AspNetCore.Mvc.Diagnostics;
-using PdfApiGaisler.Services;
-using System.Diagnostics.Tracing;
-
-namespace YourProjectNamespace.Services
+using System.Collections.Generic;
+namespace PdfApiGaisler.Services
 {
-    public class ImageExtractorService : IImageExtractor
+    public interface IImageExtractorService
     {
-        public byte[] ExtractImagesFromPage(PdfPage page)
+        List<byte[]> ExtractImagesFromPage(PdfPage page);
+        List<byte[]> ExtractImagesFromPages(List<PdfPage> pages);
+    }
+    public class ImageExtractorService : IImageExtractorService
+    {
+        public List<byte[]> ExtractImagesFromPage(PdfPage page)
         {
             var listener = new ImageRenderListener();
             var processor = new PdfCanvasProcessor(listener);
             processor.ProcessPageContent(page);
             return listener.GetImageBytes();
         }
-
+        public List<byte[]> ExtractImagesFromPages(List<PdfPage> pages)
+        {
+            var allImages = new List<byte[]>();
+            foreach (var page in pages)
+            {
+                var images = ExtractImagesFromPage(page);
+                allImages.AddRange(images);
+            }
+            return allImages;
+        }
         private class ImageRenderListener : IEventListener
         {
-            private byte[] _imageBytes;
-
+            private readonly List<byte[]> _imageBytesList = new List<byte[]>();
             public void EventOccurred(IEventData data, EventType type)
             {
                 if (type == EventType.RENDER_IMAGE && data is ImageRenderInfo renderInfo)
                 {
                     var imageObject = renderInfo.GetImage();
-                    _imageBytes = imageObject.GetImageBytes();
+                    if (imageObject != null)
+                    {
+                        _imageBytesList.Add(imageObject.GetImageBytes());
+                    }
                 }
             }
-
             public ICollection<EventType> GetSupportedEvents()
             {
                 return new HashSet<EventType> { EventType.RENDER_IMAGE };
             }
-
-            public byte[] GetImageBytes()
+            public List<byte[]> GetImageBytes()
             {
-                return _imageBytes;
+                return _imageBytesList;
             }
         }
     }
