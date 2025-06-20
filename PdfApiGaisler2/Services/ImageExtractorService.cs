@@ -5,11 +5,7 @@ using iText.Kernel.Pdf.Canvas.Parser.Listener;
 using System.Collections.Generic;
 namespace PdfApiGaisler.Services
 {
-    public interface IImageExtractorService
-    {
-        List<byte[]> ExtractImagesFromPage(PdfPage page);
-        List<byte[]> ExtractImagesFromPages(List<PdfPage> pages);
-    }
+   
     public class ImageExtractorService : IImageExtractorService
     {
         public List<byte[]> ExtractImagesFromPage(PdfPage page)

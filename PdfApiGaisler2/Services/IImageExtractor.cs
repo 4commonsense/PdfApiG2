@@ -1,7 +1,10 @@
-﻿namespace PdfApiGaisler.Services
+﻿using iText.Kernel.Pdf;
+
+namespace PdfApiGaisler.Services
 {
-        public interface IImageExtractor
-        {
-            byte[] ExtractImagesFromPage(iText.Kernel.Pdf.PdfPage page);
-        }
+    public interface IImageExtractorService
+    {
+        List<byte[]> ExtractImagesFromPage(PdfPage page);
+        List<byte[]> ExtractImagesFromPages(List<PdfPage> pages);
+    }
 }

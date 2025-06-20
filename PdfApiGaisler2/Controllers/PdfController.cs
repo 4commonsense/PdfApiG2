@@ -28,8 +28,8 @@ namespace PdfApiGaisler.Controllers
     [Route("api/[controller]")]
     public class PdfController : ControllerBase
     {
-        private readonly IImageExtractor _imageExtractor;
-        public PdfController(IImageExtractor imageExtractor)
+        private readonly IImageExtractorService _imageExtractor;
+        public PdfController(IImageExtractorService imageExtractor)
         {
             _imageExtractor = imageExtractor;
         }
@@ -151,20 +151,25 @@ namespace PdfApiGaisler.Controllers
                         else
                         {
                             // Попытка извлечь изображение
-                            var imageBytes = _imageExtractor.ExtractImagesFromPage(page);
-                            if (imageBytes != null && imageBytes.Length > 0)
+                            var imageBytesList = _imageExtractor.ExtractImagesFromPage(page);
+                            if (imageBytesList != null && imageBytesList.Any())
                             {
-                                // Определяем расширение для изображения
                                 string imageExt = ".png"; // по умолчанию
                                 var originalExt = System.IO.Path.GetExtension(originalFileName).ToLower();
                                 if (SupportedImageExtensions.Contains(originalExt))
                                     imageExt = originalExt;
-
-                                results.Add(new FileResultModel
+                                for (int j = 0; j < imageBytesList.Count; j++)
                                 {
-                                    FileName = $"{System.IO.Path.GetFileNameWithoutExtension(originalFileName)}_page_{i}{imageExt}",
-                                    Base64Content = Convert.ToBase64String(imageBytes)
-                                });
+                                    var imageBytes = imageBytesList[j];
+                                    if (imageBytes != null)
+                                    {
+                                        results.Add(new FileResultModel
+                                        {
+                                            FileName = $"{System.IO.Path.GetFileNameWithoutExtension(originalFileName)}_page*{i}{imageExt}",
+                                            Base64Content = Convert.ToBase64String(imageBytes)
+                                        });
+                                    }
+                                }
                             }
                         }
                     }
